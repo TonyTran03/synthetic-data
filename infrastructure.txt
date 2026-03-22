@@ -1,0 +1,14 @@
+root/
+├── config.py
+├── loaders.py
+├── metrics.py
+├── app.py
+├── models/
+│   ├── __init__.py
+│   ├── cvae.py
+│   ├── gmm.py
+│   └── bootstrap.py
+├── notebooks/
+│   └── run_pipeline.ipynb
+├── results/
+└── data/
