@@ -79,7 +79,7 @@ def one_stochastic_experiment(
         "rf_auc_sep": sep,
     }
 
-def run_many_rf_trials(X_real, y_real, X_syn, y_syn, trials=200):
+def run_many_rf_trials(X_real, y_real, X_syn, y_syn, trials=1):
     aucs = []
     seps = []
 
