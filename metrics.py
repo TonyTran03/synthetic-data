@@ -1,9 +1,10 @@
+# metrics.py
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import train_test_split
 from scipy.stats import mannwhitneyu
-
+from plots import *
 
 def strat_samp(idx0, idx1, n0, n1, rng):
     a = rng.choice(idx0, size=n0, replace=False)
@@ -79,7 +80,7 @@ def one_stochastic_experiment(
         "rf_auc_sep": sep,
     }
 
-def run_many_rf_trials(X_real, y_real, X_syn, y_syn, trials=1):
+def run_many_rf_trials(X_real, y_real, X_syn, y_syn, trials=10):
     aucs = []
     seps = []
 
@@ -92,7 +93,7 @@ def run_many_rf_trials(X_real, y_real, X_syn, y_syn, trials=1):
             holdout_neg=3, holdout_pos=12,
             train_neg=20, train_pos=20,
             seed=t,
-            n_estimators=200,
+            n_estimators=5,
         )
         aucs.append(out["rf_auc_raw"])
         seps.append(out["rf_auc_sep"])
@@ -139,12 +140,53 @@ def per_feature_tests(X_real, X_syn, alpha=0.05):
     }
 
 
+
 ### ALL
 def evaluate_all(X_real, y_real, X_syn, y_syn):
-    out = {}
 
-    out.update(run_many_rf_trials(X_real, y_real, X_syn, y_syn))
-    out.update(correlation_diff(X_real, X_syn))
-    out.update(per_feature_tests(X_real, X_syn))
+    metrics = {}
+    figs = {}
 
-    return out
+    metrics.update(run_many_rf_trials(X_real, y_real, X_syn, y_syn))
+    metrics.update(correlation_diff(X_real, X_syn))
+    metrics.update(per_feature_tests(X_real, X_syn))
+
+    figs["corr"] = plot_corr_matrices(X_real, X_syn)
+
+    figs["pca"] = plot_pca_projection(
+        X_real,
+        y_real,
+        X_syn,
+        y_syn,
+    )
+
+    figs["overlap"] = plot_flat_overlap(
+        X_real,
+        X_syn,
+    )
+
+    return metrics, figs
+def evaluate_abl(df):
+    figs = {}
+
+    for dataset in df["dataset"].unique():
+        for mode in ["forward", "reverse"]:
+            sub = df[
+                (df["dataset"] == dataset) &
+                (df["feature_mode"] == mode)
+            ]
+
+            if sub.empty:
+                continue
+
+            fig = plot_ablation_curve(
+                df,
+                dataset=dataset,
+                feature_mode=mode,
+                metric_col="rf_sep_mean",
+                error_col="rf_sep_sd",
+            )
+
+            figs[f"ablation_{dataset}_{mode}"] = fig
+
+    return figs
