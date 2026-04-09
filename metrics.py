@@ -1,10 +1,14 @@
 # metrics.py
+"""
+Pure computation — no plotting, no side effects.
+All figure generation lives in plots.py.
+"""
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_auc_score, f1_score
 from sklearn.model_selection import StratifiedKFold
+from sklearn.neighbors import NearestNeighbors
 from scipy.stats import mannwhitneyu, entropy
-from plots import *
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -195,54 +199,59 @@ def per_feature_tests(X_real, X_syn, alpha=0.05):
     }
 
 
+# ── Realism (nearest-neighbour distances) ────────────────────────────────────
+
+def nn_distances(X_real, X_syn, k=1):
+    """
+    Nearest-neighbour diagnostics for realism.
+
+    For each synthetic sample, find its distance to the nearest real sample.
+    Returns summary statistics of those distances plus the raw array.
+    """
+    nn = NearestNeighbors(n_neighbors=k, metric="euclidean")
+    nn.fit(X_real)
+    dists, _ = nn.kneighbors(X_syn)
+    dists = dists[:, -1]  # k-th neighbour distance
+
+    # Also compute real-to-real baseline for comparison
+    nn_real = NearestNeighbors(n_neighbors=k + 1, metric="euclidean")
+    nn_real.fit(X_real)
+    dists_real, _ = nn_real.kneighbors(X_real)
+    dists_real = dists_real[:, -1]  # exclude self (index 0)
+
+    return {
+        "nn_dist_mean":       float(dists.mean()),
+        "nn_dist_median":     float(np.median(dists)),
+        "nn_dist_std":        float(dists.std()),
+        "nn_dist_max":        float(dists.max()),
+        "nn_real_mean":       float(dists_real.mean()),
+        "nn_real_median":     float(np.median(dists_real)),
+        "nn_ratio_mean":      float(dists.mean() / dists_real.mean()) if dists_real.mean() > 0 else np.nan,
+        "nn_dists_syn":       dists,
+        "nn_dists_real":      dists_real,
+    }
+
+
 # ── Master evaluation ─────────────────────────────────────────────────────────
 
-def evaluate_all(X_real, y_real, X_syn, y_syn, feature_names=None, method=None, frac=None):
+def evaluate_all(X_real, y_real, X_syn, y_syn):
+    """
+    Compute all metrics. Returns (metrics_dict, kld_per_feature_array).
+    No figures are created — plotting is the caller's responsibility.
+    """
     metrics = {}
-    figs    = {}
-
     metrics.update(run_many_rf_trials(X_real, y_real, X_syn, y_syn))
     metrics.update(tstr_f1(X_real, y_real, X_syn, y_syn))
     metrics.update(correlation_diff(X_real, X_syn))
     metrics.update(per_feature_tests(X_real, X_syn))
 
     kld_result = kld_per_feature(X_real, X_syn)
-    metrics.update(kld_result)
+    metrics["kld_mean"] = kld_result["kld_mean"]
+    metrics["kld_max"]  = kld_result["kld_max"]
 
-    figs["corr"]      = plot_corr_matrices(X_real, X_syn)
-    figs["pca"]       = plot_pca_projection(X_real, y_real, X_syn, y_syn)
-    figs["kld"]       = plot_kld_per_feature(
-                            X_real, X_syn,
-                            feature_names=feature_names,
-                            top_n=15,
-                            method=method,
-                            frac=frac,
-                        )
-    figs["kld_array"] = kld_result["kld_per_feature"]
+    nn_result = nn_distances(X_real, X_syn)
+    metrics["nn_dist_mean"]  = nn_result["nn_dist_mean"]
+    metrics["nn_dist_median"] = nn_result["nn_dist_median"]
+    metrics["nn_ratio_mean"] = nn_result["nn_ratio_mean"]
 
-    return metrics, figs
-
-
-# ── Ablation summary ──────────────────────────────────────────────────────────
-
-def evaluate_abl(df):
-    figs = {}
-    for dataset in df["dataset"].unique():
-        for mode in ["forward", "reverse"]:
-            sub = df[(df["dataset"] == dataset) & (df["feature_mode"] == mode)]
-            if sub.empty:
-                continue
-            for metric_col, error_col in [
-                ("rf_sep_mean", "rf_sep_sd"),
-                ("kld_mean",    None),
-                ("utility_gap", None),
-            ]:
-                if metric_col not in df.columns:
-                    continue
-                figs[f"ablation_{dataset}_{mode}_{metric_col}"] = plot_ablation_curve(
-                    df, dataset=dataset,
-                    feature_mode=mode,
-                    metric_col=metric_col,
-                    error_col=error_col,
-                )
-    return figs
+    return metrics, kld_result["kld_per_feature"]

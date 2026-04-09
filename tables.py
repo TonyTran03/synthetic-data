@@ -45,7 +45,7 @@ SUMMARY_METRICS = [
     "prop_significant",
 ]
 
-METHOD_ORDER   = ["bootstrap", "gmm", "cvae"]
+METHOD_ORDER   = ["bootstrap", "gmm", "cvae", "iid_columnwise"]
 DATASET_ORDER  = ["HIV", "breast_cancer", "diabetes"]
 
 
